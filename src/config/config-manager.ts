@@ -94,17 +94,29 @@ export async function getConfig(): Promise<Config> {
      // Try local config first
      const localConfig = await readConfigFile(getLocalConfigPath());
      if (localConfig) {
-          return localConfig;
+          // Apply defaults
+          return {
+               ...localConfig,
+               linearEnabled: localConfig.linearEnabled ?? true,
+          };
      }
 
      // Try global config
      const globalConfig = await readConfigFile(getGlobalConfigPath());
      if (globalConfig) {
-          return globalConfig;
+          // Apply defaults
+          return {
+               ...globalConfig,
+               linearEnabled: globalConfig.linearEnabled ?? true,
+          };
      }
 
      // Fall back to environment variables
-     return getConfigFromEnv() as Config;
+     const envConfig = getConfigFromEnv();
+     return {
+          ...envConfig,
+          linearEnabled: envConfig.linearEnabled ?? true,
+     } as Config;
 }
 
 /**

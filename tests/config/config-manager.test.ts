@@ -91,6 +91,19 @@ describe("Config Manager", () => {
                await rm(join(homedir(), ".div-flow"), { recursive: true, force: true });
           });
 
+          it("should set boolean config values", async () => {
+               await configManager.setConfigValue("linearEnabled", false);
+
+               const globalPath = join(homedir(), ".div-flow", "config.json");
+               const file = Bun.file(globalPath);
+               const content = await file.text();
+               const config = JSON.parse(content);
+               expect(config.linearEnabled).toBe(false);
+
+               // Cleanup
+               await rm(join(homedir(), ".div-flow"), { recursive: true, force: true });
+          });
+
           it("should update existing config without overwriting other values", async () => {
                const globalPath = join(homedir(), ".div-flow", "config.json");
                await Bun.$`mkdir -p ${join(homedir(), ".div-flow")}`.quiet();
@@ -154,6 +167,29 @@ describe("Config Manager", () => {
           });
      });
 
+     describe("getConfigFromEnv", () => {
+          it("should parse LINEAR_ENABLED as boolean", async () => {
+               process.env.LINEAR_ENABLED = "false";
+
+               const config = await configManager.getConfig();
+               expect(config.linearEnabled).toBe(false);
+          });
+
+          it("should parse LINEAR_ENABLED='true' as boolean true", async () => {
+               process.env.LINEAR_ENABLED = "true";
+
+               const config = await configManager.getConfig();
+               expect(config.linearEnabled).toBe(true);
+          });
+
+          it("should parse LINEAR_ENABLED='1' as boolean true", async () => {
+               process.env.LINEAR_ENABLED = "1";
+
+               const config = await configManager.getConfig();
+               expect(config.linearEnabled).toBe(true);
+          });
+     });
+
      describe("getConfigPath", () => {
           it("should return local config path if it exists", async () => {
                await Bun.write(".div-flow.json", JSON.stringify({}));
@@ -167,6 +203,24 @@ describe("Config Manager", () => {
                const path = await configManager.getConfigPath();
                expect(path).toContain(homedir());
                expect(path).toContain(".div-flow");
+          });
+     });
+
+     describe("setConfigValues with linearEnabled", () => {
+          it("should set linearEnabled boolean value", async () => {
+               await configManager.setConfigValues({
+                    linearEnabled: false,
+               });
+
+               const globalPath = join(homedir(), ".div-flow", "config.json");
+               const file = Bun.file(globalPath);
+               const content = await file.text();
+               const config = JSON.parse(content);
+
+               expect(config.linearEnabled).toBe(false);
+
+               // Cleanup
+               await rm(join(homedir(), ".div-flow"), { recursive: true, force: true });
           });
      });
 });

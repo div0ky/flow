@@ -9,7 +9,7 @@
 
 import { consola } from "consola";
 
-import { handleConfigGet, handleConfigInit, handleConfigList, handleConfigSet } from "./commands/config";
+import { handleConfigGet, handleConfigInit, handleConfigList, handleConfigModify, handleConfigSet } from "./commands/config";
 import { getConfig } from "./config/config-manager";
 import { getMissingConfigKeys, validateRequiredConfig } from "./config/config-validation";
 import { clearTerminal, runCommandWithOutput } from "./utils/command";
@@ -198,7 +198,7 @@ async function main(): Promise<void> {
 
           // Configuration options
           menuOptions.push(
-               { value: "config-init", label: "Configure flow" },
+               { value: "config-modify", label: "Configure flow" },
                { value: "config-list", label: "View configuration" },
                { value: "exit", label: "Exit" },
           );
@@ -260,6 +260,9 @@ async function main(): Promise<void> {
                }
                case "config-init":
                     await handleConfigInit();
+                    break;
+               case "config-modify":
+                    await handleConfigModify();
                     break;
                case "config-list":
                     await handleConfigList();
