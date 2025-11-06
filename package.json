@@ -1,0 +1,39 @@
+{
+  "name": "div-flow",
+  "version": "0.1.0",
+  "description": "A CLI tool for managing git workflows with AI-powered commit messages and PR generation",
+  "type": "module",
+  "bin": {
+    "div-flow": "./src/cli.ts"
+  },
+  "files": [
+    "src/**/*.ts"
+  ],
+  "keywords": [
+    "git",
+    "workflow",
+    "cli",
+    "ai",
+    "commit",
+    "pr",
+    "linear",
+    "github"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "dependencies": {
+    "@google/genai": "^0.2.0",
+    "@linear/sdk": "^2.0.0",
+    "consola": "^3.2.3",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
