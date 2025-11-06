@@ -86,9 +86,18 @@ export const branchExistsLocal = (branch: string): boolean => {
 
 /**
  * Check if a branch exists remotely
+ * Uses a timeout to prevent hanging on network issues
  */
 export const branchExistsRemote = (branch: string): boolean => {
-     return runCommandSilent(`git ls-remote --heads origin ${branch}`);
+     try {
+          // Add timeout to prevent hanging on network issues
+          return runCommandSilent(`git ls-remote --heads origin ${branch}`, {
+               timeout: 5000, // 5 second timeout
+          });
+     } catch {
+          // If check fails (network issue, timeout, etc.), assume branch doesn't exist remotely
+          return false;
+     }
 };
 
 /**
@@ -175,13 +184,27 @@ export const getBaseBranchFor = (type: BranchType): string => {
 };
 
 /**
+ * Protected branches that should NEVER be deleted or modified
+ */
+export const PROTECTED_BRANCHES = ["main", "develop", "staging"] as const;
+
+/**
+ * Check if a branch is protected
+ * @param branch - Branch name to check
+ * @returns true if branch is protected, false otherwise
+ */
+export const isProtectedBranch = (branch: string): boolean => {
+     return PROTECTED_BRANCHES.includes(branch as typeof PROTECTED_BRANCHES[number]);
+};
+
+/**
  * Assert that current branch is NOT on a protected branch
  * Prevents accidental operations on main, develop, staging
  */
 export const assertNotOnProtectedBranch = (branch: string): void => {
-     const protected_branches = ["main", "develop", "staging"];
-     if (protected_branches.includes(branch)) {
+     if (isProtectedBranch(branch)) {
           consola.error(`Cannot perform this operation on protected branch: ${branch}`);
+          consola.error(`Protected branches (${PROTECTED_BRANCHES.join(", ")}) cannot be deleted or modified.`);
           process.exit(1);
      }
 };

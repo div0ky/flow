@@ -137,7 +137,7 @@ export async function stageRelease(): Promise<void> {
 export async function finishRelease(gh_token: string): Promise<void> {
      consola.start("Finishing release...");
 
-     const current_branch = getCurrentBranch();
+     let current_branch = getCurrentBranch();
 
      // Validate we're on a release branch
      if (!current_branch.startsWith("release/")) {
@@ -148,8 +148,15 @@ export async function finishRelease(gh_token: string): Promise<void> {
      consola.info(`Current branch: ${current_branch}`);
      consola.info(`Base branch: main`);
 
-     // Handle uncommitted changes
+     // Handle uncommitted changes (this may rename the branch if Linear issue is created)
      const _was_stashed = await handleUncommittedChanges();
+
+     // Refresh current branch in case it was renamed during commit workflow
+     const updated_branch = getCurrentBranch();
+     if (updated_branch !== current_branch) {
+          consola.info(`Branch was renamed to: ${updated_branch}`);
+          current_branch = updated_branch;
+     }
 
      // Push branch if needed
      await pushBranchIfNeeded(current_branch);

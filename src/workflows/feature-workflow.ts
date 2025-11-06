@@ -1,6 +1,7 @@
 import { consola } from "consola";
 
 import { getConfig } from "../config/config-manager";
+import { isLinearEnabled } from "../config/config-validation";
 import { runCommandCapture, runCommandCaptureOrThrow, runCommandSilent, runCommandWithOutput } from "../utils/command";
 import { ensureDevelopIsUpToDate } from "../utils/setup";
 import { displayGitStatus, getGitStatus, getCurrentBranch } from "./git";
@@ -41,7 +42,7 @@ export async function startFeature(): Promise<void> {
 
           if (action === "stash") {
                const stash_success = runCommandWithOutput(
-                    'git stash push -u -m "div-flow: temporary stash for feature start"',
+                    'git stash push -u -m "dflow: temporary stash for feature start"',
                     "Stashing changes...",
                );
                if (!stash_success) {
@@ -94,27 +95,53 @@ export async function startFeature(): Promise<void> {
           }
      }
 
-     // Prompt for Linear issue ID
-     const linear_id = await consola.prompt("Enter Linear issue ID (e.g., EV-123):", {
+     // Prompt for Linear issue ID (only if Linear is enabled)
+     const linear_enabled = await isLinearEnabled();
+     let linear_id: string | null = null;
+     
+     if (linear_enabled) {
+          linear_id = await consola.prompt("Enter Linear issue ID (e.g., EV-123):", {
+               type: "text",
+               validate: (value: string) => /^[A-Z]+-\d+$/.test(value) || "Invalid format. Use EV-123",
+          });
+     } else {
+          // If Linear is disabled, skip Linear ID prompt
+          consola.info("Linear integration is disabled. Skipping Linear issue ID.");
+     }
+
+     // Prompt for feature branch name (short identifier)
+     const description = await consola.prompt("Feature branch name (short identifier, e.g., 'add-user-auth'):", {
           type: "text",
-          validate: (value: string) => /^[A-Z]+-\d+$/.test(value) || "Invalid format. Use EV-123",
+          validate: (value: string) => {
+               if (value.length === 0) return "Branch name cannot be empty";
+               if (value.length > 50) return "Branch name must be 50 characters or less (will be prefixed with 'feature/{linear-id}-')";
+               return true;
+          },
      });
 
-     // Prompt for feature description
-     const description = await consola.prompt("Brief description of feature:", {
-          type: "text",
-          validate: (value: string) => value.length > 0 && value.length <= 50,
-     });
-
-     // Normalize description to kebab-case
-     const kebab_description = description
-          .toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/[^a-z0-9-]/g, "-")
-          .replace(/-+/g, "-")
-          .replace(/^-|-$/g, "");
-
-     const branch_name = `feature/${linear_id.toLowerCase()}-${kebab_description}`;
+     // Build branch name with or without Linear ID
+     let branch_name: string;
+     if (linear_id) {
+          const kebab_description = description
+               .toLowerCase()
+               .replace(/\s+/g, "-")
+               .replace(/[^a-z0-9-]/g, "-")
+               .replace(/-+/g, "-")
+               .replace(/^-|-$/g, "");
+          branch_name = `feature/${linear_id.toLowerCase()}-${kebab_description}`;
+     } else {
+          // No Linear ID - use simple feature branch name
+          const kebab_description = description
+               .toLowerCase()
+               .replace(/\s+/g, "-")
+               .replace(/[^a-z0-9-]/g, "-")
+               .replace(/-+/g, "-")
+               .replace(/^-|-$/g, "");
+          branch_name = `feature/${kebab_description}`;
+     }
+     
+     // Show preview of branch name
+     consola.info(`Branch name will be: ${branch_name}`);
 
      // Create and checkout feature branch
      const branch_success = runCommandWithOutput(`git checkout -b ${branch_name}`, `Creating feature branch: ${branch_name}...`);
@@ -137,7 +164,7 @@ export async function startFeature(): Promise<void> {
 export async function finishFeature(gh_token: string): Promise<void> {
      consola.start("Finishing feature...");
 
-     const current_branch = getCurrentBranch();
+     let current_branch = getCurrentBranch();
 
      // Validate we're on a feature branch
      if (!current_branch.startsWith("feature/")) {
@@ -148,8 +175,15 @@ export async function finishFeature(gh_token: string): Promise<void> {
      consola.info(`Current branch: ${current_branch}`);
      consola.info(`Base branch: develop`);
 
-     // Handle uncommitted changes
+     // Handle uncommitted changes (this may rename the branch if Linear issue is created)
      const _was_stashed = await handleUncommittedChanges();
+
+     // Refresh current branch in case it was renamed during commit workflow
+     const updated_branch = getCurrentBranch();
+     if (updated_branch !== current_branch) {
+          consola.info(`Branch was renamed to: ${updated_branch}`);
+          current_branch = updated_branch;
+     }
 
      // Push branch if needed
      await pushBranchIfNeeded(current_branch);
@@ -259,8 +293,15 @@ export async function finishFeature(gh_token: string): Promise<void> {
           draft: false,
      });
 
-     // Link to Linear if applicable
-     if (pr_url) {
+     if (!pr_url) {
+          consola.error("Failed to create PR. Branch cleanup skipped.");
+          await restoreStashedChangesIfNeeded();
+          return;
+     }
+
+     // Link to Linear if applicable and enabled
+     const linear_enabled = await isLinearEnabled();
+     if (linear_enabled) {
           const linear_issue_id = detectLinearIssue(current_branch);
           if (linear_issue_id) {
                const config = await getConfig();
@@ -287,4 +328,31 @@ export async function finishFeature(gh_token: string): Promise<void> {
 
      // Restore stashed changes if any
      await restoreStashedChangesIfNeeded();
+
+     // Switch back to develop
+     consola.start("Switching back to develop...");
+     const checkoutSuccess = runCommandWithOutput("git checkout develop", "Switching to develop...");
+     if (!checkoutSuccess) {
+          consola.warn("Failed to switch to develop. Please switch manually.");
+     } else {
+          // Pull latest develop
+          runCommandWithOutput("git pull origin develop", "Pulling latest develop...");
+          
+          // Ask if user wants to delete the local feature branch
+          const shouldDelete = await consola.prompt(`Delete local branch "${current_branch}"?`, {
+               type: "confirm",
+               default: true,
+          });
+
+          if (shouldDelete) {
+               const deleteSuccess = runCommandWithOutput(`git branch -d ${current_branch}`, `Deleting local branch ${current_branch}...`);
+               if (!deleteSuccess) {
+                    consola.warn(`Failed to delete branch. It may have unmerged changes. Use 'git branch -D ${current_branch}' to force delete.`);
+               } else {
+                    consola.success(`✅ Deleted local branch: ${current_branch}`);
+               }
+          } else {
+               consola.info(`Local branch "${current_branch}" kept. You can delete it later with: git branch -d ${current_branch}`);
+          }
+     }
 }

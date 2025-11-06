@@ -3,9 +3,11 @@ import { execSync } from "child_process";
 import { consola } from "consola";
 
 import { getConfig } from "../config/config-manager";
-import { generateCommitMessage, generateLinearContent } from "./ai";
+import { isLinearEnabled } from "../config/config-validation";
+import { runCommandWithOutput } from "../utils/command";
+import { explainError, generateCommitMessage, generateLinearContent } from "./ai";
 import type { CommitMessage } from "./ai";
-import { displayGitStatus, getGitStatus, getCurrentBranch } from "./git";
+import { displayGitStatus, getGitStatus, getCurrentBranch, isProtectedBranch } from "./git";
 import {
      hasLinearPattern,
      createLinearIssue,
@@ -34,8 +36,8 @@ async function processCommit(message: string): Promise<void> {
      consola.start("Committing changes...");
 
      try {
-          execSync("git add .");
-          execSync(`git commit -m "${message}"`);
+          execSync("git add .", { stdio: ["ignore", "pipe", "pipe"] });
+          execSync(`git commit -m "${message}"`, { stdio: ["ignore", "pipe", "pipe"] });
           consola.success("Changes committed successfully!");
 
           // Get current branch
@@ -91,6 +93,14 @@ async function processCommit(message: string): Promise<void> {
                                    consola.error("Failed to rebase. You may need to resolve conflicts.");
                               }
                          } else if (action === "force") {
+                              // CRITICAL: Never allow force push to protected branches
+                              if (isProtectedBranch(branch)) {
+                                   consola.error(`❌ CRITICAL: Cannot force push to protected branch "${branch}"`);
+                                   consola.error(`Protected branches (main, develop, staging) cannot be force-pushed.`);
+                                   consola.error(`This is a safety measure to prevent accidental overwriting of critical branches.`);
+                                   consola.info("Please use pull/rebase instead, or switch to a feature branch.");
+                                   return;
+                              }
                               execSync(`git push --force origin ${branch}`);
                               consola.success("Changes force-pushed successfully!");
                          }
@@ -102,16 +112,168 @@ async function processCommit(message: string): Promise<void> {
                               default: false,
                          });
                          if (force_push) {
+                              // CRITICAL: Never allow force push to protected branches
+                              if (isProtectedBranch(branch)) {
+                                   consola.error(`❌ CRITICAL: Cannot force push to protected branch "${branch}"`);
+                                   consola.error(`Protected branches (main, develop, staging) cannot be force-pushed.`);
+                                   consola.error(`This is a safety measure to prevent accidental overwriting of critical branches.`);
+                                   return;
+                              }
                               execSync(`git push --force origin ${branch}`);
                               consola.success("Changes force-pushed successfully!");
                          }
                     }
                }
           }
-     } catch (error) {
-          consola.error("Failed to commit changes");
-          consola.error(error);
-          process.exit(1);
+     } catch (error: unknown) {
+          // Extract error message without exposing stack traces
+          let error_message = "";
+          let error_str = "";
+          
+          if (error instanceof Error) {
+               // Only use the message, not the stack trace
+               error_message = error.message;
+               error_str = error.message;
+          } else {
+               error_str = String(error);
+               error_message = error_str;
+          }
+
+          // Detect pre-commit hook failures (husky, lint-staged, eslint, etc.)
+          const isHookFailure = 
+               error_str.includes("husky") ||
+               error_str.includes("pre-commit") ||
+               error_str.includes("lint-staged") ||
+               error_str.includes("ESLint") ||
+               error_str.includes("eslint") ||
+               error_str.includes("pre-commit script failed");
+
+          if (isHookFailure) {
+               consola.error("❌ Commit failed due to pre-commit hook");
+               consola.warn("Your git hooks (husky/lint-staged) prevented the commit.");
+               
+               // Extract just the core error message (avoid all the noise)
+               const lines = error_message.split("\n");
+               
+               // Find the actual error line (TypeError, ESLint error, etc.)
+               const error_line = lines.find(line => {
+                    const trimmed = line.trim();
+                    return (
+                         trimmed.includes("TypeError:") ||
+                         trimmed.includes("Error:") ||
+                         (trimmed.includes("ESLint:") && trimmed.length < 100) ||
+                         trimmed.includes("Rule:") ||
+                         trimmed.includes("Occurred while linting")
+                    );
+               });
+
+               // Find the file/line info
+               const file_info = lines.find(line => 
+                    line.includes("Occurred while linting") || 
+                    line.includes(".ts:") ||
+                    line.includes(".js:")
+               );
+
+               // Build a clean error summary
+               const clean_error_parts: string[] = [];
+               if (error_line) {
+                    clean_error_parts.push(error_line.trim());
+               }
+               if (file_info && !clean_error_parts.includes(file_info.trim())) {
+                    clean_error_parts.push(file_info.trim());
+               }
+
+               if (clean_error_parts.length > 0) {
+                    consola.box(clean_error_parts.join("\n"));
+               } else {
+                    // Fallback: show a generic message
+                    consola.warn("Pre-commit hook failed. Check the error details above.");
+               }
+
+               // Try to get AI explanation - use the clean error parts
+               const error_for_ai = clean_error_parts.join("\n") || error_line || "ESLint pre-commit hook failed";
+               
+               consola.start("Generating user-friendly error explanation...");
+               const explanation = await explainError(error_for_ai);
+               
+               if (explanation && !explanation.startsWith("{") && explanation.length > 50) {
+                    // Only show if it's not raw JSON and has meaningful content
+                    consola.success("✅ Error explanation:");
+                    console.log("\n" + "─".repeat(60));
+                    console.log(explanation);
+                    console.log("─".repeat(60) + "\n");
+               } else {
+                    // Fallback to specific guidance based on error type
+                    if (error_str.includes("TypeError") && error_str.includes("typeParameters.params")) {
+                         consola.error("ESLint plugin bug detected");
+                         consola.info("This is a known issue with @typescript-eslint/eslint-plugin");
+                         consola.info("Solutions:");
+                         consola.info("  1. Temporarily disable the rule: Add '@typescript-eslint/unified-signatures: off' to your ESLint config");
+                         consola.info("  2. Update dependencies: Run 'npm update @typescript-eslint/eslint-plugin @typescript-eslint/parser'");
+                         consola.info("  3. Skip hooks for this commit: Choose 'Skip hooks' option below");
+                    } else if (error_str.includes("ESLint")) {
+                         consola.error("ESLint found errors in your code.");
+                         consola.info("Run 'npm run lint' or 'bun run lint' to see all errors");
+                    }
+               }
+
+               const action = await consola.prompt("What would you like to do?", {
+                    type: "select",
+                    options: [
+                         { value: "fix", label: "Fix the issues and retry commit" },
+                         { value: "skip", label: "Skip hooks and commit anyway (⚠️  not recommended)" },
+                         { value: "cancel", label: "Cancel commit" },
+                    ],
+               });
+
+               if (action === "skip") {
+                    consola.warn("⚠️  Skipping git hooks - this bypasses code quality checks!");
+                    const confirm_skip = await consola.prompt("Are you sure you want to skip hooks?", {
+                         type: "confirm",
+                         default: false,
+                    });
+
+                    if (confirm_skip) {
+                         try {
+                              execSync(`git commit -m "${message}" --no-verify`);
+                              consola.success("Changes committed (hooks skipped)!");
+                              
+                              // Get current branch for push prompt
+                              const branch = execSync("git branch --show-current", { encoding: "utf-8" }).trim();
+                              const should_push = await consola.prompt("Push to origin?", {
+                                   type: "confirm",
+                                   default: true,
+                              });
+
+                              if (should_push) {
+                                   runCommandWithOutput(`git push origin ${branch}`, `Pushing to origin/${branch}...`);
+                              }
+                         } catch (skip_error) {
+                              consola.error("Failed to commit even with --no-verify");
+                              consola.error(skip_error);
+                              process.exit(1);
+                         }
+                    } else {
+                         consola.info("Commit cancelled. Please fix the issues and try again.");
+                         process.exit(0);
+                    }
+               } else if (action === "fix") {
+                    consola.info("Please fix the issues shown above and run dflow commit again.");
+                    consola.info("Common fixes:");
+                    consola.info("  • Run 'npm run lint' or 'bun run lint' to see all errors");
+                    consola.info("  • Fix TypeScript errors");
+                    consola.info("  • Fix ESLint violations");
+                    process.exit(1);
+               } else {
+                    consola.info("Commit cancelled.");
+                    process.exit(0);
+               }
+          } else {
+               // Other commit errors
+               consola.error("Failed to commit changes");
+               consola.error(error_message);
+               process.exit(1);
+          }
      }
 }
 
@@ -157,7 +319,10 @@ export async function commitWorkflow(): Promise<void> {
      const current_branch = getCurrentBranch();
      const has_linear_pattern = hasLinearPattern(current_branch);
 
-     if (!has_linear_pattern) {
+     // Only check Linear if it's enabled
+     const linear_enabled = await isLinearEnabled();
+     
+     if (!has_linear_pattern && linear_enabled) {
           consola.warn("⚠️  No Linear issue detected in branch name.");
           consola.info(`Current branch: ${current_branch}`);
 
@@ -172,7 +337,7 @@ export async function commitWorkflow(): Promise<void> {
 
                if (!linear_api_key) {
                     consola.error("Linear API key not configured.");
-                    consola.info("Please run: div-flow config init");
+                    consola.info("Please run: dflow config init");
                     consola.info("You can find your API key at: https://linear.app/settings/api");
                } else {
                     // Ask user to describe the work being done

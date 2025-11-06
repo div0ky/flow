@@ -1,10 +1,11 @@
 {
-  "name": "div-flow",
+  "name": "@div0ky/flow",
   "version": "0.1.0",
   "description": "A CLI tool for managing git workflows with AI-powered commit messages and PR generation",
   "type": "module",
   "bin": {
-    "div-flow": "./src/cli.ts"
+    "dflow": "./src/cli.ts",
+    "fl": "./src/cli.ts"
   },
   "files": [
     "src/**/*.ts"
@@ -19,10 +20,22 @@
     "linear",
     "github"
   ],
-  "author": "",
+  "author": "div0ky",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MidtownHI/div-flow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MidtownHI/div-flow/issues"
+  },
+  "homepage": "https://github.com/MidtownHI/div-flow#readme",
   "engines": {
     "bun": ">=1.0.0"
+  },
+  "scripts": {
+    "test": "bun test",
+    "test:watch": "bun test --watch"
   },
   "dependencies": {
     "@google/genai": "^0.2.0",

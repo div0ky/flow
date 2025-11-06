@@ -98,38 +98,65 @@ export async function pushBranchIfNeeded(branch: string): Promise<void> {
                     process.exit(1);
                }
           } else {
-               const ahead_behind = execSync(`git rev-list --left-right --count origin/${branch}...HEAD`, { encoding: "utf-8" }).trim();
-               const [_behind, ahead] = ahead_behind.split("\t").map(Number);
+               // Remote exists, check if we're ahead/behind
+               try {
+                    const ahead_behind = execSync(`git rev-list --left-right --count origin/${branch}...HEAD`, { encoding: "utf-8" }).trim();
+                    const [_behind, ahead] = ahead_behind.split("\t").map(Number);
 
-               if (ahead > 0) {
-                    consola.warn(`Local branch is ${ahead} commit(s) ahead of remote`);
-                    const should_push = await consola.prompt("Push commits to origin?", {
-                         type: "confirm",
-                         default: true,
-                    });
+                    if (ahead > 0) {
+                         consola.warn(`Local branch is ${ahead} commit(s) ahead of remote`);
+                         const should_push = await consola.prompt("Push commits to origin?", {
+                              type: "confirm",
+                              default: true,
+                         });
 
-                    if (should_push) {
-                         consola.start("Pushing commits to origin...");
-                         try {
-                              execSync(`git push origin ${branch}`);
-                              consola.success("Commits pushed successfully!");
-                         }
-                         catch {
-                              consola.error("Failed to push commits");
+                         if (should_push) {
+                              consola.start("Pushing commits to origin...");
+                              try {
+                                   execSync(`git push origin ${branch}`);
+                                   consola.success("Commits pushed successfully!");
+                              }
+                              catch {
+                                   consola.error("Failed to push commits");
+                                   process.exit(1);
+                              }
+                         } else {
+                              consola.error("Cannot create PR without pushing all commits");
                               process.exit(1);
                          }
                     } else {
-                         consola.error("Cannot create PR without pushing all commits");
-                         process.exit(1);
+                         consola.success("Branch is up to date with remote");
                     }
-               } else {
-                    consola.success("Branch is up to date with remote");
+               } catch (compare_error) {
+                    // If we can't compare (e.g., branch was renamed, remote doesn't exist yet), 
+                    // check if branch is already pushed by trying to get the remote tracking branch
+                    try {
+                         const remote_tracking = execSync("git rev-parse --abbrev-ref --symbolic-full-name @{u}", { encoding: "utf-8", stdio: "pipe" }).trim();
+                         if (remote_tracking.includes(branch)) {
+                              // Branch is already tracking remote, assume it's up to date
+                              consola.success("Branch is tracking remote");
+                         } else {
+                              // Branch might have been renamed - assume it's already pushed
+                              consola.info("Branch appears to be pushed (may have been renamed)");
+                         }
+                    } catch {
+                         // Can't determine tracking - assume branch is already pushed
+                         // (since we're here after commit workflow which may have pushed)
+                         consola.info("Branch appears to be pushed (may have been renamed)");
+                    }
                }
           }
      }
      catch (error) {
-          consola.error("Failed to check remote status:", error);
-          process.exit(1);
+          // Don't fail hard - branch might have been renamed or already pushed
+          const error_str = String(error);
+          if (error_str.includes("unknown revision") || error_str.includes("ambiguous argument")) {
+               consola.warn("Could not verify remote status (branch may have been renamed)");
+               consola.info("Assuming branch is already pushed. Continuing...");
+          } else {
+               consola.error("Failed to check remote status:", error);
+               process.exit(1);
+          }
      }
 }
 

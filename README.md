@@ -1,4 +1,4 @@
-# div-flow
+# flow
 
 A CLI tool for managing git workflows with AI-powered commit messages and PR generation.
 
@@ -9,21 +9,31 @@ A CLI tool for managing git workflows with AI-powered commit messages and PR gen
 ## Installation
 
 ```bash
-npm install -g div-flow
+npm install -g @div0ky/flow
 ```
 
 Or install locally:
 
 ```bash
-npm install div-flow
+npm install @div0ky/flow
+```
+
+After installation, use the `dflow` command (or `fl` as a shorter alias):
+
+```bash
+dflow --help
+# or
+fl --help
 ```
 
 ## Setup
 
-Before using div-flow, you need to configure your API keys:
+Before using flow, you need to configure your API keys:
 
 ```bash
-div-flow config init
+dflow config init
+# or
+fl config init
 ```
 
 This will guide you through setting up:
@@ -34,15 +44,15 @@ This will guide you through setting up:
 You can also set individual config values:
 
 ```bash
-div-flow config set googleAiKey <your-key>
-div-flow config set githubToken <your-token>
-div-flow config set linearApiKey <your-key>
+dflow config set googleAiKey <your-key>
+dflow config set githubToken <your-token>
+dflow config set linearApiKey <your-key>
 ```
 
 View your configuration:
 
 ```bash
-div-flow config list
+dflow config list
 ```
 
 ## Usage
@@ -52,7 +62,9 @@ div-flow config list
 Generate AI-powered commit messages:
 
 ```bash
-div-flow commit
+dflow commit
+# or
+fl commit
 ```
 
 ### Feature Workflow
@@ -60,13 +72,17 @@ div-flow commit
 Start a new feature branch:
 
 ```bash
-div-flow feature start
+dflow feature start
+# or
+fl feature start
 ```
 
 Finish a feature (create PR to develop):
 
 ```bash
-div-flow feature finish
+dflow feature finish
+# or
+fl feature finish
 ```
 
 ### Release Workflow
@@ -74,19 +90,19 @@ div-flow feature finish
 Start a new release branch:
 
 ```bash
-div-flow release start
+dflow release start
 ```
 
 Stage a release for testing:
 
 ```bash
-div-flow release stage
+dflow release stage
 ```
 
 Finish a release (create PR to main):
 
 ```bash
-div-flow release finish
+dflow release finish
 ```
 
 ### Hotfix Workflow
@@ -94,13 +110,13 @@ div-flow release finish
 Start a new hotfix branch:
 
 ```bash
-div-flow hotfix start
+dflow hotfix start
 ```
 
 Finish a hotfix (create PRs to main and develop):
 
 ```bash
-div-flow hotfix finish
+dflow hotfix finish
 ```
 
 ## Configuration

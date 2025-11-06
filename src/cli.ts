@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * div-flow CLI
+ * flow CLI
  * 
  * A CLI tool for managing git workflows with AI-powered commit messages and PR generation.
  * Requires Bun runtime.
@@ -11,6 +11,7 @@ import { consola } from "consola";
 
 import { handleConfigGet, handleConfigInit, handleConfigList, handleConfigSet } from "./commands/config";
 import { getConfig } from "./config/config-manager";
+import { getMissingConfigKeys, validateRequiredConfig } from "./config/config-validation";
 import { clearTerminal, runCommandWithOutput } from "./utils/command";
 import { ensureDevelopIsUpToDate, ensureRequiredBranches } from "./utils/setup";
 import { getBranchType, getCurrentBranch, isGitRepository } from "./workflows/git";
@@ -77,10 +78,32 @@ async function main(): Promise<void> {
 
      const args = process.argv.slice(2);
 
+     // Allow config commands without validation
+     const isConfigCommand = args.length > 0 && args[0] === "config";
+     if (!isConfigCommand) {
+          // Validate required configuration for all other commands
+          const isValidConfig = await validateRequiredConfig();
+          if (!isValidConfig) {
+               const missing = await getMissingConfigKeys();
+               consola.error("Missing required configuration!");
+               consola.warn(`The following configuration keys are required: ${missing.join(", ")}`);
+               consola.info("\nPlease run: dflow config init");
+               consola.info("Or set the following environment variables:");
+               missing.forEach((key) => {
+                    if (key === "googleAiKey") {
+                         consola.info("  - GOOGLE_AI_KEY");
+                    } else if (key === "githubToken") {
+                         consola.info("  - GH_TOKEN or GITHUB_TOKEN");
+                    }
+               });
+               process.exit(1);
+          }
+     }
+
      // If no arguments provided, show interactive menu
      if (args.length === 0) {
           clearTerminal();
-          consola.start("Welcome to div-flow!");
+          consola.start("Welcome to flow!");
 
           // Check if we're in a git repository
           if (!isGitRepository()) {
@@ -124,7 +147,7 @@ async function main(): Promise<void> {
                     // Clear and show menu again after init
                     clearTerminal();
                } else {
-                    consola.info("div-flow requires a git repository to work. Exiting.");
+                    consola.info("flow requires a git repository to work. Exiting.");
                     process.exit(0);
                }
           }
@@ -169,13 +192,13 @@ async function main(): Promise<void> {
           // Hotfix branch options
           if (branchType === "hotfix") {
                menuOptions.push({ value: "hotfix-finish", label: "Finish hotfix" });
-          } else if (branchType === "main") {
+          } else if (branchType === "main" || branchType === "develop") {
                menuOptions.push({ value: "hotfix-start", label: "Start hotfix" });
           }
 
           // Configuration options
           menuOptions.push(
-               { value: "config-init", label: "Configure div-flow" },
+               { value: "config-init", label: "Configure flow" },
                { value: "config-list", label: "View configuration" },
                { value: "exit", label: "Exit" },
           );
@@ -200,7 +223,7 @@ async function main(): Promise<void> {
                     const config = await getConfig();
                     const ghToken = config.githubToken;
                     if (!ghToken) {
-                         consola.error("GitHub token not configured. Run: div-flow config init");
+                         consola.error("GitHub token not configured. Run: dflow config init");
                          process.exit(1);
                     }
                     await finishFeature(ghToken);
@@ -216,7 +239,7 @@ async function main(): Promise<void> {
                     const config = await getConfig();
                     const ghToken = config.githubToken;
                     if (!ghToken) {
-                         consola.error("GitHub token not configured. Run: div-flow config init");
+                         consola.error("GitHub token not configured. Run: dflow config init");
                          process.exit(1);
                     }
                     await finishRelease(ghToken);
@@ -229,7 +252,7 @@ async function main(): Promise<void> {
                     const config = await getConfig();
                     const ghToken = config.githubToken;
                     if (!ghToken) {
-                         consola.error("GitHub token not configured. Run: div-flow config init");
+                         consola.error("GitHub token not configured. Run: dflow config init");
                          process.exit(1);
                     }
                     await finishHotfix(ghToken);
@@ -242,7 +265,7 @@ async function main(): Promise<void> {
                     await handleConfigList();
                     break;
                case "exit":
-                    consola.info("Exiting div-flow. Goodbye!");
+                    consola.info("Exiting flow. Goodbye!");
                     process.exit(0);
           }
           return;
@@ -294,7 +317,7 @@ async function main(): Promise<void> {
                               const config = await getConfig();
                               const ghToken = config.githubToken;
                               if (!ghToken) {
-                                   consola.error("GitHub token not configured. Run: div-flow config init");
+                                   consola.error("GitHub token not configured. Run: dflow config init");
                                    process.exit(1);
                               }
                               await finishFeature(ghToken);
@@ -302,7 +325,7 @@ async function main(): Promise<void> {
                          }
                          default:
                               consola.error(`Unknown feature command: ${subcommand}`);
-                              consola.info("Use: div-flow feature start|finish");
+                              consola.info("Use: dflow feature start|finish");
                               process.exit(1);
                     }
                     break;
@@ -320,7 +343,7 @@ async function main(): Promise<void> {
                               const config = await getConfig();
                               const ghToken = config.githubToken;
                               if (!ghToken) {
-                                   consola.error("GitHub token not configured. Run: div-flow config init");
+                                   consola.error("GitHub token not configured. Run: dflow config init");
                                    process.exit(1);
                               }
                               await finishRelease(ghToken);
@@ -328,7 +351,7 @@ async function main(): Promise<void> {
                          }
                          default:
                               consola.error(`Unknown release command: ${subcommand}`);
-                              consola.info("Use: div-flow release start|stage|finish");
+                              consola.info("Use: dflow release start|stage|finish");
                               process.exit(1);
                     }
                     break;
@@ -343,7 +366,7 @@ async function main(): Promise<void> {
                               const config = await getConfig();
                               const ghToken = config.githubToken;
                               if (!ghToken) {
-                                   consola.error("GitHub token not configured. Run: div-flow config init");
+                                   consola.error("GitHub token not configured. Run: dflow config init");
                                    process.exit(1);
                               }
                               await finishHotfix(ghToken);
@@ -351,7 +374,7 @@ async function main(): Promise<void> {
                          }
                          default:
                               consola.error(`Unknown hotfix command: ${subcommand}`);
-                              consola.info("Use: div-flow hotfix start|finish");
+                              consola.info("Use: dflow hotfix start|finish");
                               process.exit(1);
                     }
                     break;

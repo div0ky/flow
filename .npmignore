@@ -1,0 +1,39 @@
+# Development files
+tests/
+legacy/
+*.test.ts
+*.spec.ts
+
+# Build artifacts (if any)
+dist/
+build/
+*.tsbuildinfo
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Lock files (keep bun.lock for reference but npm will use package-lock.json)
+# Actually, we should include bun.lock for users who use bun
+
+# Documentation that's not needed in package
+.cursor/
+

@@ -3,6 +3,8 @@ import { execSync } from "child_process";
 import { LinearClient } from "@linear/sdk";
 import { consola } from "consola";
 
+import { isProtectedBranch } from "./git";
+
 export interface LinearIssue {
      id: string;
      identifier: string;
@@ -457,6 +459,22 @@ export const renameBranchToLinearPattern = (
      current_branch: string,
 ): boolean => {
      try {
+          // CRITICAL: Never allow deletion of protected branches
+          if (isProtectedBranch(current_branch)) {
+               consola.error(`❌ CRITICAL: Cannot rename protected branch "${current_branch}"`);
+               consola.error(`Protected branches (main, develop, staging) cannot be deleted or renamed.`);
+               consola.error(`This is a safety measure to prevent accidental deletion of critical branches.`);
+               return false;
+          }
+
+          // Also check if the new branch name would conflict with a protected branch
+          const branchNameOnly = new_branch_name.split("/").pop() || new_branch_name;
+          if (isProtectedBranch(branchNameOnly)) {
+               consola.error(`❌ CRITICAL: Cannot rename to protected branch name "${branchNameOnly}"`);
+               consola.error(`Protected branches (main, develop, staging) cannot be used as branch names.`);
+               return false;
+          }
+
           consola.start(`Renaming branch to ${new_branch_name}...`);
 
           // Rename local branch
@@ -466,6 +484,13 @@ export const renameBranchToLinearPattern = (
           try {
                execSync(`git ls-remote --exit-code --heads origin ${current_branch}`, { stdio: "ignore" });
                // Remote exists, delete it and push new one
+               // Double-check protection before deletion (should never happen due to check above, but extra safety)
+               if (isProtectedBranch(current_branch)) {
+                    consola.error(`❌ CRITICAL: Attempted to delete protected branch "${current_branch}" - operation blocked!`);
+                    // Try to restore the local branch name
+                    execSync(`git branch -m ${current_branch}`);
+                    return false;
+               }
                execSync(`git push origin --delete ${current_branch}`);
                execSync(`git push -u origin ${new_branch_name}`);
           } catch {

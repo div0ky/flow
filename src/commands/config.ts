@@ -47,12 +47,19 @@ export async function handleConfigList(): Promise<void> {
 
      for (const key of CONFIG_KEYS) {
           const value = config[key];
-          if (value) {
-               // Mask sensitive values (show first 4 and last 4 chars)
-               const masked = value.length > 8
-                    ? `${value.substring(0, 4)}${"*".repeat(value.length - 8)}${value.substring(value.length - 4)}`
-                    : "****";
-               console.log(`  ${key}: ${masked}`);
+          if (value !== undefined && value !== null) {
+               if (key === "linearEnabled") {
+                    // Show boolean as true/false
+                    console.log(`  ${key}: ${value ? "true" : "false"}`);
+               } else if (typeof value === "string" && value.length > 0) {
+                    // Mask sensitive values (show first 4 and last 4 chars)
+                    const masked = value.length > 8
+                         ? `${value.substring(0, 4)}${"*".repeat(value.length - 8)}${value.substring(value.length - 4)}`
+                         : "****";
+                    console.log(`  ${key}: ${masked}`);
+               } else {
+                    console.log(`  ${key}: (not set)`);
+               }
           } else {
                console.log(`  ${key}: (not set)`);
           }
@@ -63,48 +70,58 @@ export async function handleConfigList(): Promise<void> {
  * Interactive configuration setup wizard
  */
 export async function handleConfigInit(): Promise<void> {
-     consola.start("Setting up div-flow configuration...");
+     consola.start("Setting up flow configuration...");
 
-     const config: Partial<Record<ConfigKey, string>> = {};
+     const config: Partial<Record<ConfigKey, string | boolean>> = {};
 
-     // Google AI Key
-     const googleAiKey = await consola.prompt("Enter your Google AI API key (optional):", {
+     // Google AI Key (required)
+     const googleAiKey = await consola.prompt("Enter your Google AI API key (required):", {
           type: "text",
           default: "",
-          required: false,
+          required: true,
      });
-     if (googleAiKey) {
-          config.googleAiKey = googleAiKey;
+     if (googleAiKey && googleAiKey.trim()) {
+          config.googleAiKey = googleAiKey.trim();
+     } else {
+          consola.error("Google AI API key is required!");
+          process.exit(1);
      }
 
-     // GitHub Token
-     const githubToken = await consola.prompt("Enter your GitHub token (optional):", {
+     // GitHub Token (required)
+     const githubToken = await consola.prompt("Enter your GitHub token (required):", {
           type: "text",
           default: "",
-          required: false,
+          required: true,
      });
-     if (githubToken) {
-          config.githubToken = githubToken;
+     if (githubToken && githubToken.trim()) {
+          config.githubToken = githubToken.trim();
+     } else {
+          consola.error("GitHub token is required!");
+          process.exit(1);
      }
 
-     // Linear API Key
-     const linearApiKey = await consola.prompt("Enter your Linear API key (optional):", {
-          type: "text",
-          default: "",
-          required: false,
+     // Linear enable/disable
+     const enableLinear = await consola.prompt("Enable Linear integration?", {
+          type: "confirm",
+          default: true,
      });
-     if (linearApiKey) {
-          config.linearApiKey = linearApiKey;
-     }
+     config.linearEnabled = enableLinear;
 
-     if (Object.keys(config).length === 0) {
-          consola.warn("No configuration values provided");
-          return;
+     // Linear API Key (only if enabled)
+     if (enableLinear) {
+          const linearApiKey = await consola.prompt("Enter your Linear API key (optional):", {
+               type: "text",
+               default: "",
+               required: false,
+          });
+          if (linearApiKey && linearApiKey.trim()) {
+               config.linearApiKey = linearApiKey.trim();
+          }
      }
 
      // Set all values
      for (const [key, value] of Object.entries(config)) {
-          await setConfigValue(key as ConfigKey, value);
+          await setConfigValue(key as ConfigKey, value as string | boolean);
      }
 
      consola.success("Configuration saved successfully!");

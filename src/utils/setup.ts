@@ -11,9 +11,9 @@ export async function ensureRequiredBranches(): Promise<void> {
      const requiredBranches = ["main", "develop", "staging"];
      const missingBranches: string[] = [];
 
-     // Check which branches are missing
+     // Check which branches are missing (only check locally - we'll create them locally)
      for (const branch of requiredBranches) {
-          if (!branchExists(branch)) {
+          if (!branchExistsLocal(branch)) {
                missingBranches.push(branch);
           }
      }
@@ -29,8 +29,8 @@ export async function ensureRequiredBranches(): Promise<void> {
      });
 
     if (!shouldCreate) {
-         consola.error("div-flow requires main, develop, and staging branches to work properly.");
-         consola.info("Please create these branches manually or run div-flow again and accept the branch creation prompt.");
+         consola.error("flow requires main, develop, and staging branches to work properly.");
+         consola.info("Please create these branches manually or run dflow again and accept the branch creation prompt.");
          process.exit(1);
     }
 
@@ -43,7 +43,7 @@ export async function ensureRequiredBranches(): Promise<void> {
 
      if (!hasCommits) {
           consola.warn("No commits found. Branches can only be created after at least one commit.");
-          consola.info("Please create an initial commit first, then run div-flow again.");
+          consola.info("Please create an initial commit first, then run dflow again.");
           return;
      }
 
@@ -53,9 +53,13 @@ export async function ensureRequiredBranches(): Promise<void> {
                // Main should be created from current branch
                if (!branchExistsLocal("main")) {
                     runCommandWithOutput(`git checkout -b main`, `Creating main branch...`);
-                    // If there's a remote main, track it
-                    if (branchExistsRemote("main")) {
-                         runCommandWithOutput(`git branch --set-upstream-to=origin/main main`, "Setting upstream...");
+                    // If there's a remote main, track it (with timeout to avoid hanging)
+                    try {
+                         if (branchExistsRemote("main")) {
+                              runCommandWithOutput(`git branch --set-upstream-to=origin/main main`, "Setting upstream...");
+                         }
+                    } catch {
+                         // Ignore remote check failures - branch will be created locally
                     }
                }
           } else if (branch === "develop") {
@@ -68,9 +72,13 @@ export async function ensureRequiredBranches(): Promise<void> {
                          // If main doesn't exist locally, create develop from current
                          runCommandWithOutput(`git checkout -b develop`, `Creating develop branch...`);
                     }
-                    // If there's a remote develop, track it
-                    if (branchExistsRemote("develop")) {
-                         runCommandWithOutput(`git branch --set-upstream-to=origin/develop develop`, "Setting upstream...");
+                    // If there's a remote develop, track it (with timeout to avoid hanging)
+                    try {
+                         if (branchExistsRemote("develop")) {
+                              runCommandWithOutput(`git branch --set-upstream-to=origin/develop develop`, "Setting upstream...");
+                         }
+                    } catch {
+                         // Ignore remote check failures - branch will be created locally
                     }
                }
           } else if (branch === "staging") {
@@ -85,9 +93,13 @@ export async function ensureRequiredBranches(): Promise<void> {
                     } else {
                          runCommandWithOutput(`git checkout -b staging`, `Creating staging branch...`);
                     }
-                    // If there's a remote staging, track it
-                    if (branchExistsRemote("staging")) {
-                         runCommandWithOutput(`git branch --set-upstream-to=origin/staging staging`, "Setting upstream...");
+                    // If there's a remote staging, track it (with timeout to avoid hanging)
+                    try {
+                         if (branchExistsRemote("staging")) {
+                              runCommandWithOutput(`git branch --set-upstream-to=origin/staging staging`, "Setting upstream...");
+                         }
+                    } catch {
+                         // Ignore remote check failures - branch will be created locally
                     }
                }
           }

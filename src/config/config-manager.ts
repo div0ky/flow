@@ -72,7 +72,12 @@ function getConfigFromEnv(): Partial<Config> {
      for (const [envKey, configKey] of Object.entries(ENV_TO_CONFIG)) {
           const value = process.env[envKey];
           if (value) {
-               config[configKey] = value;
+               if (configKey === "linearEnabled") {
+                    // Parse boolean from environment variable
+                    config[configKey] = value.toLowerCase() === "true" || value === "1";
+               } else {
+                    config[configKey] = value;
+               }
           }
      }
 
@@ -113,11 +118,11 @@ export async function getConfigValue(key: ConfigKey): Promise<string | undefined
 /**
  * Set a configuration value in the global config file
  */
-export async function setConfigValue(key: ConfigKey, value: string): Promise<void> {
+export async function setConfigValue(key: ConfigKey, value: string | boolean): Promise<void> {
      const globalPath = getGlobalConfigPath();
      let config = await readConfigFile(globalPath) || ({} as Config);
 
-     config[key] = value;
+     config[key] = value as any;
 
      await writeConfigFile(globalPath, config);
 }

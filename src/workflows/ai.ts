@@ -15,7 +15,7 @@ const getAI = async (): Promise<GoogleGenAI> => {
           const config = await getConfig();
           const api_key = config.googleAiKey;
           if (!api_key) {
-               throw new Error("Google AI key not configured. Run: div-flow config init");
+               throw new Error("Google AI key not configured. Run: dflow config init");
           }
           aiInstance = new GoogleGenAI({
                apiKey: api_key,
@@ -657,12 +657,74 @@ Respond with JSON containing:
 };
 
 /**
- * Generates a Linear update comment based on recent PR changes
- * @param current_branch - Current branch name
- * @param base_branch - Base branch name
- * @param user_description - Optional user description of changes
- * @returns Generated update comment or null if failed
+ * Generates a user-friendly explanation of an error message
+ * @param error_message - The raw error message from ESLint, TypeScript, or other tools
+ * @returns User-friendly explanation or null if failed
  */
+export const explainError = async (error_message: string): Promise<string | null> => {
+     try {
+          const ai = await getAI();
+
+          const user_content = `You are helping a developer fix a pre-commit hook error. Analyze this error message and provide SPECIFIC, ACTIONABLE guidance.
+
+Error message:
+${error_message.substring(0, 2000)}
+
+Provide a concise explanation (2-4 sentences max) that:
+1. Identifies the SPECIFIC problem (e.g., "ESLint plugin bug in unified-signatures rule")
+2. Explains WHY it's happening (e.g., "The plugin is trying to iterate over typeParameters.params which doesn't exist in this TypeScript version")
+3. Gives EXACT steps to fix it (e.g., "Add '@typescript-eslint/unified-signatures: off' to your .eslintrc.js, or update @typescript-eslint/eslint-plugin to version X")
+
+Be specific and actionable. Don't be generic. If it's a known bug, mention it. If there's a specific file/line, reference it.`;
+
+          consola.start("🤖 Analyzing error with AI...");
+
+          const result = await ai.models.generateContent({
+               config: {
+                    systemInstruction: [
+                         "You are a helpful coding assistant that explains technical errors in plain language.",
+                         "Focus on clarity and actionable solutions.",
+                         "Be concise but thorough.",
+                         "If the error is from ESLint, TypeScript, or other linting tools, explain what rule was violated and how to fix it.",
+                    ],
+                    temperature: 0.2,
+                    maxOutputTokens: 800,
+               },
+               contents: user_content,
+               model: "gemini-2.5-flash",
+          });
+
+          // Extract text from response - handle different response structures
+          let explanation = "";
+          
+          // Try direct text property first
+          if (result.text) {
+               explanation = result.text;
+          } 
+          // Try candidates structure (like streaming responses)
+          else if (result.candidates?.[0]?.content?.parts) {
+               const parts = result.candidates[0].content.parts;
+               for (const part of parts) {
+                    if (part.text) {
+                         explanation += part.text;
+                    }
+               }
+          }
+          // Try response property
+          else if ((result as any).response?.text) {
+               explanation = (result as any).response.text;
+          }
+          // If it's already a string
+          else if (typeof result === "string") {
+               explanation = result;
+          }
+
+          return explanation.trim() || null;
+     } catch (error) {
+          // Silently fail - don't show error details to user
+          return null;
+     }
+};
 export const generateLinearUpdateComment = async (
      _current_branch: string,
      _base_branch: string,
